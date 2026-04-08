@@ -1,16 +1,17 @@
 import { Clipboard, Color, Icon, MenuBarExtra, open, showInFinder } from "@raycast/api";
 import { useEffect, useState } from "react";
 import { BackgroundRunState, getBackgroundRunLogDir, loadBackgroundRuns } from "./background-run-state";
+import { shouldKeepBuildAndZipStatusLoaded } from "./build-and-zip-status-runtime";
 import { revealPathInFinder } from "./finder-utils";
 
 const RECENT_RUN_LIMIT = 5;
-const REFRESH_INTERVAL_MS = 5000;
+const REFRESH_INTERVAL_MS = 1000;
 
 export default function BuildAndZipStatusCommand() {
   const [activeRuns, setActiveRuns] = useState<BackgroundRunState[]>([]);
   const [recentRuns, setRecentRuns] = useState<BackgroundRunState[]>([]);
   const [errorMessage, setErrorMessage] = useState<string>();
-  const [isLoading, setIsLoading] = useState(true);
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
 
   useEffect(() => {
     let disposed = false;
@@ -31,7 +32,7 @@ export default function BuildAndZipStatusCommand() {
         setErrorMessage(error instanceof Error ? error.message : String(error));
       } finally {
         if (!disposed) {
-          setIsLoading(false);
+          setIsInitialLoading(false);
         }
       }
     };
@@ -47,51 +48,56 @@ export default function BuildAndZipStatusCommand() {
     };
   }, []);
 
+  const shouldKeepLoaded = shouldKeepBuildAndZipStatusLoaded({
+    activeRunCount: activeRuns.length,
+    isInitialLoading,
+  });
+
   return (
-    <MenuBarExtra
-      icon={activeRuns.length > 0 ? { source: Icon.CircleProgress100, tintColor: Color.Blue } : Icon.Hammer}
-      isLoading={isLoading}
-      title={activeRuns.length > 0 ? `构建 ${activeRuns.length}` : "构建"}
-      tooltip={buildTooltip(activeRuns.length, recentRuns.length)}
-    >
-      {errorMessage ? <MenuBarExtra.Item title="状态读取失败" subtitle={errorMessage} /> : null}
+      <MenuBarExtra
+          icon={activeRuns.length > 0 ? { source: Icon.CircleProgress100, tintColor: Color.Blue } : Icon.Hammer}
+          isLoading={shouldKeepLoaded}
+          title={activeRuns.length > 0 ? `构建 ${activeRuns.length}` : "构建"}
+          tooltip={buildTooltip(activeRuns.length, recentRuns.length)}
+      >
+        {errorMessage ? <MenuBarExtra.Item title="状态读取失败" subtitle={errorMessage} /> : null}
 
-      {activeRuns.length > 0 ? (
-        <MenuBarExtra.Section title="进行中的任务">
-          {activeRuns.map((run) => (
-            <RunMenuItem key={run.runId} run={run} />
-          ))}
-        </MenuBarExtra.Section>
-      ) : (
-        <MenuBarExtra.Section title="进行中的任务">
-          <MenuBarExtra.Item title="当前没有后台任务" />
-        </MenuBarExtra.Section>
-      )}
-
-      <MenuBarExtra.Section title="最近任务">
-        {recentRuns.length > 0 ? (
-          recentRuns.map((run) => <RunMenuItem key={run.runId} run={run} />)
+        {activeRuns.length > 0 ? (
+            <MenuBarExtra.Section title="进行中的任务">
+              {activeRuns.map((run) => (
+                  <RunMenuItem key={run.runId} run={run} />
+              ))}
+            </MenuBarExtra.Section>
         ) : (
-          <MenuBarExtra.Item title="最近还没有任务记录" />
+            <MenuBarExtra.Section title="进行中的任务">
+              <MenuBarExtra.Item title="当前没有后台任务" />
+            </MenuBarExtra.Section>
         )}
-      </MenuBarExtra.Section>
-    </MenuBarExtra>
+
+        <MenuBarExtra.Section title="最近任务">
+          {recentRuns.length > 0 ? (
+              recentRuns.map((run) => <RunMenuItem key={run.runId} run={run} />)
+          ) : (
+              <MenuBarExtra.Item title="最近还没有任务记录" />
+          )}
+        </MenuBarExtra.Section>
+      </MenuBarExtra>
   );
 }
 
 function RunMenuItem({ run }: { run: BackgroundRunState }) {
   return (
-    <MenuBarExtra.Submenu
-      icon={getStatusIcon(run.status)}
-      title={run.projectName}
-    >
-      <MenuBarExtra.Item title={run.statusText || run.status} subtitle={formatTimestamp(run.updatedAt)} />
-      <MenuBarExtra.Item title="打开日志" onAction={() => void open(run.logPath)} />
-      <MenuBarExtra.Item title="复制日志路径" onAction={() => void Clipboard.copy(run.logPath)} />
-      {run.zipPath ? <MenuBarExtra.Item title="打开压缩包" onAction={() => void revealPathInFinder(run.zipPath, showInFinder)} /> : null}
-      {run.zipPath ? <MenuBarExtra.Item title="复制压缩包路径" onAction={() => void Clipboard.copy(run.zipPath)} /> : null}
-      {run.errorMessage ? <MenuBarExtra.Item title="错误信息" subtitle={run.errorMessage} /> : null}
-    </MenuBarExtra.Submenu>
+      <MenuBarExtra.Submenu
+          icon={getStatusIcon(run.status)}
+          title={run.projectName}
+      >
+        <MenuBarExtra.Item title={run.statusText || run.status} subtitle={formatTimestamp(run.updatedAt)} />
+        <MenuBarExtra.Item title="打开日志" onAction={() => void open(run.logPath)} />
+        <MenuBarExtra.Item title="复制日志路径" onAction={() => void Clipboard.copy(run.logPath)} />
+        {run.zipPath ? <MenuBarExtra.Item title="打开压缩包" onAction={() => void revealPathInFinder(run.zipPath, showInFinder)} /> : null}
+        {run.zipPath ? <MenuBarExtra.Item title="复制压缩包路径" onAction={() => void Clipboard.copy(run.zipPath)} /> : null}
+        {run.errorMessage ? <MenuBarExtra.Item title="错误信息" subtitle={run.errorMessage} /> : null}
+      </MenuBarExtra.Submenu>
   );
 }
 
